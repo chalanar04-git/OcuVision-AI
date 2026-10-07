@@ -1,0 +1,289 @@
+const express = require("express");
+const PDFDocument = require("pdfkit");
+
+const pool = require("../config/db");
+const authMiddleware = require("../middleware/authMiddleware");
+
+const router = express.Router();
+
+
+// GET /api/reports/:id
+// Generate a PDF report for a prediction
+router.get(
+  "/:id",
+  authMiddleware,
+  async (req, res) => {
+
+    try {
+
+      const predictionId = req.params.id;
+
+      let result;
+
+      // --------------------------------
+      // PATIENT ACCESS
+      // --------------------------------
+      // Patients can only access their own reports.
+
+      if (req.user.role === "patient") {
+
+        result = await pool.query(
+          `SELECT
+            id,
+            image_path,
+            prediction,
+            confidence,
+            created_at
+           FROM predictions
+           WHERE id = $1
+             AND user_id = $2`,
+          [
+            predictionId,
+            req.user.id
+          ]
+        );
+
+      }
+
+      // --------------------------------
+      // DOCTOR / ADMIN ACCESS
+      // --------------------------------
+      // Doctors and admins can access
+      // reports from registered patients.
+
+      else if (
+        req.user.role === "doctor" ||
+        req.user.role === "admin"
+      ) {
+
+        result = await pool.query(
+          `SELECT
+            id,
+            image_path,
+            prediction,
+            confidence,
+            created_at
+           FROM predictions
+           WHERE id = $1`,
+          [predictionId]
+        );
+
+      }
+
+      // --------------------------------
+      // INVALID ROLE
+      // --------------------------------
+
+      else {
+
+        return res.status(403).json({
+          success: false,
+          message: "Access denied"
+        });
+
+      }
+
+
+      // --------------------------------
+      // CHECK PREDICTION
+      // --------------------------------
+
+      if (result.rows.length === 0) {
+
+        return res.status(404).json({
+          success: false,
+          message: "Prediction not found or access denied"
+        });
+
+      }
+
+      const prediction = result.rows[0];
+
+
+      // --------------------------------
+      // CREATE PDF
+      // --------------------------------
+
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 50
+      });
+
+
+      // --------------------------------
+      // PDF RESPONSE HEADERS
+      // --------------------------------
+
+      res.setHeader(
+        "Content-Type",
+        "application/pdf"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="OcuVision_Report_${prediction.id}.pdf"`
+      );
+
+
+      // Send PDF directly to browser
+      doc.pipe(res);
+
+
+      // --------------------------------
+      // HEADER
+      // --------------------------------
+
+      doc
+        .fontSize(24)
+        .font("Helvetica-Bold")
+        .text("OcuVision AI", {
+          align: "center"
+        });
+
+      doc
+        .moveDown(0.5)
+        .fontSize(16)
+        .font("Helvetica")
+        .text(
+          "Ocular Tumor Prediction Report",
+          {
+            align: "center"
+          }
+        );
+
+      doc.moveDown(2);
+
+
+      // --------------------------------
+      // REPORT INFORMATION
+      // --------------------------------
+
+      doc
+        .fontSize(14)
+        .font("Helvetica-Bold")
+        .text("Prediction Details");
+
+      doc.moveDown(1);
+
+      doc
+        .fontSize(12)
+        .font("Helvetica")
+        .text(
+          `Report ID: ${prediction.id}`
+        );
+
+      doc.moveDown(0.5);
+
+      doc.text(
+        `Image: ${prediction.image_path}`
+      );
+
+      doc.moveDown(0.5);
+
+      doc.text(
+        `Prediction: ${prediction.prediction}`
+      );
+
+      doc.moveDown(0.5);
+
+      doc.text(
+        `Confidence: ${Number(
+          prediction.confidence
+        ).toFixed(2)}%`
+      );
+
+      doc.moveDown(0.5);
+
+      doc.text(
+        `Date: ${new Date(
+          prediction.created_at
+        ).toLocaleString()}`
+      );
+
+      doc.moveDown(2);
+
+
+      // --------------------------------
+      // RESULT SUMMARY
+      // --------------------------------
+
+      doc
+        .fontSize(14)
+        .font("Helvetica-Bold")
+        .text("Result Summary");
+
+      doc.moveDown(1);
+
+      doc
+        .fontSize(12)
+        .font("Helvetica")
+        .text(
+          `The OcuVision AI model classified the uploaded fundus image as "${prediction.prediction}" with a confidence score of ${Number(
+            prediction.confidence
+          ).toFixed(2)}%.`
+        );
+
+      doc.moveDown(2);
+
+
+      // --------------------------------
+      // DISCLAIMER
+      // --------------------------------
+
+      doc
+        .fontSize(14)
+        .font("Helvetica-Bold")
+        .text("Important Disclaimer");
+
+      doc.moveDown(1);
+
+      doc
+        .fontSize(10)
+        .font("Helvetica")
+        .text(
+          "This report is generated by an artificial intelligence model for research and educational purposes. The prediction and confidence score should not be interpreted as a clinical diagnosis. Please consult a qualified medical professional for medical evaluation and diagnosis."
+        );
+
+      doc.moveDown(3);
+
+
+      // --------------------------------
+      // FOOTER
+      // --------------------------------
+
+      doc
+        .fontSize(9)
+        .fillColor("gray")
+        .text(
+          "Generated by OcuVision AI",
+          {
+            align: "center"
+          }
+        );
+
+
+      // --------------------------------
+      // FINISH PDF
+      // --------------------------------
+
+      doc.end();
+
+    } catch (error) {
+
+      console.error(
+        "PDF report error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate PDF report"
+      });
+
+    }
+
+  }
+);
+
+
+module.exports = router;

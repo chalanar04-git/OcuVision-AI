@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python virtual environment
+model-env/
+venv/
+.venv/
+
+# Machine learning datasets
+dataset/
+datasets/
+
+# Trained models
+*.keras
+*.h5
+*.hdf5
+trainedmodel/
+
+# ML outputs and logs
+outputs/
+output/
+logs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Frontend build files
+client/dist/
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code local settings
+.vscode/
